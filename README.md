@@ -48,6 +48,9 @@ EMBEDDING_PROVIDER=hashing RELEVANCE_FLOOR=0.20 LLM_PROVIDER=extractive \
 
 Open <http://localhost:8000>.
 
+For step-by-step setup, loading your own documents, and putting Jarvis on an existing
+website, see **[INSTRUCTION.md](INSTRUCTION.md)**.
+
 Set `ADMIN_API_KEY` in `.env` before using the document endpoints — they fail closed with
 503 while it is still the placeholder, rather than leaving document management open.
 
