@@ -53,7 +53,7 @@ def create_app() -> FastAPI:
     if frontend.is_dir():
         app.mount("/static", StaticFiles(directory=frontend), name="static")
 
-        @app.get("/", include_in_schema=False)
+        @app.api_route("/", methods=["GET", "HEAD"], include_in_schema=False)
         async def chat_page() -> FileResponse:
             return FileResponse(frontend / "index.html")
 

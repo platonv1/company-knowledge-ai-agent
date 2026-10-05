@@ -9,6 +9,7 @@ from app.core.logging import get_logger
 from app.core.rate_limit import TokenBucketLimiter
 from app.llm.base import LLMError
 from app.models.chat import ChatRequest, ChatResponse, SourceOut
+from app.rag.embeddings import EmbeddingError
 from app.repositories.conversation_repository import ConversationNotFoundError
 
 router = APIRouter(tags=["chat"])
@@ -54,13 +55,13 @@ async def chat(
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)
         ) from exc
-    except LLMError as exc:
+    except (LLMError, EmbeddingError) as exc:
         # The provider failing is not the caller's fault, and the detail must not
         # leak keys or request internals.
-        logger.error("LLM request failed: %s", exc)
+        logger.error("Provider request failed: %s", exc)
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"{settings.jarvis_name} could not reach the language model. Please retry.",
+            detail=f"{settings.jarvis_name} could not reach its model provider. Please retry.",
         ) from exc
 
     return ChatResponse(

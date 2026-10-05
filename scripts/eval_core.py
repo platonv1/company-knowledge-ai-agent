@@ -101,6 +101,9 @@ class EvalSummary:
     # or the answerer did.
     refused_end_to_end: int | None = None
     unanswerable_answered: int = 0
+    # Cases the judge actually assessed. Refusals make no claims and failed
+    # judge calls have no verdict, so neither belongs in the denominator.
+    judged: int = 0
 
     @property
     def page_hit_rate(self) -> float:
@@ -141,9 +144,9 @@ class EvalSummary:
 
     @property
     def faithfulness_rate(self) -> float | None:
-        if self.faithful is None:
+        if self.faithful is None or self.judged == 0:
             return None
-        return _rate(self.faithful, self.answered)
+        return _rate(self.faithful, self.judged)
 
 
 def summarise(outcomes: list[Outcome], archived: set[str]) -> EvalSummary:
@@ -151,6 +154,7 @@ def summarise(outcomes: list[Outcome], archived: set[str]) -> EvalSummary:
     unanswerable = [o for o in outcomes if o.kind == "unanswerable"]
     scored = [o for o in outcomes if o.answer is not None]
     unanswerable_scored = [o for o in unanswerable if o.answer is not None]
+    judged = [o for o in outcomes if o.faithful is not None]
 
     return EvalSummary(
         answerable=len(answerable),
@@ -169,9 +173,6 @@ def summarise(outcomes: list[Outcome], archived: set[str]) -> EvalSummary:
         ),
         answers_matched=(sum(1 for o in scored if o.answer_matched) if scored else None),
         citations_valid=(sum(1 for o in scored if o.citations_valid) if scored else None),
-        faithful=(
-            sum(1 for o in scored if o.faithful)
-            if scored and any(o.faithful is not None for o in scored)
-            else None
-        ),
+        judged=len(judged),
+        faithful=sum(1 for o in judged if o.faithful) if judged else None,
     )

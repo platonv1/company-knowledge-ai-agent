@@ -123,9 +123,18 @@ class OpenAIEmbeddingService(EmbeddingService):
         return self._model
 
     async def _embed_batch(self, texts: list[str]) -> list[list[float]]:
-        response = await self._client.embeddings.create(
-            input=texts, model=self._model, dimensions=self.dimensions
-        )
+        try:
+            response = await self._client.embeddings.create(
+                input=texts, model=self._model, dimensions=self.dimensions
+            )
+        except Exception as exc:  # noqa: BLE001 - callers see one error type
+            # Wrapped so a provider outage or a bad key becomes a clean 502
+            # rather than a bare 500 with a traceback. The provider's message is
+            # deliberately not included: it echoes the API key back.
+            raise EmbeddingError(
+                f"Embedding request to {self._model} failed ({type(exc).__name__})."
+            ) from exc
+
         vectors = [item.embedding for item in response.data]
         if len(vectors) != len(texts):
             raise EmbeddingError(

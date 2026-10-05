@@ -171,3 +171,45 @@ def test_end_to_end_refusal_is_none_when_no_answers_were_generated():
     summary = summarise([outcome(case_id="a", kind="unanswerable", expected_document=None)], set())
 
     assert summary.end_to_end_refusal_accuracy is None
+
+
+def answered_outcome(case_id: str, *, faithful: bool | None, answer: str = "an answer"):
+    return Outcome(
+        case_id=case_id,
+        kind="fact",
+        question="q",
+        category="direct",
+        expected_document="Leave_Policy_v2.pdf",
+        expected_page=2,
+        retrieved=[retrieved("Leave_Policy_v2.pdf")],
+        answer=answer,
+        faithful=faithful,
+    )
+
+
+def test_faithfulness_is_scored_over_judged_cases_only():
+    """Refusals and failed judge calls are not judgeable.
+
+    Dividing by every answered case would drag the rate down for cases the judge
+    never assessed, which makes the number mean nothing.
+    """
+    outcomes = [
+        answered_outcome("a", faithful=True),
+        answered_outcome("b", faithful=False),
+        answered_outcome("c", faithful=None),  # refusal or judge failure
+        answered_outcome("d", faithful=None),
+    ]
+
+    summary = summarise(outcomes, archived=set())
+
+    assert summary.judged == 2
+    assert summary.faithfulness_rate == 0.5
+
+
+def test_faithfulness_is_absent_when_nothing_was_judged():
+    outcomes = [answered_outcome("a", faithful=None)]
+
+    summary = summarise(outcomes, archived=set())
+
+    assert summary.judged == 0
+    assert summary.faithfulness_rate is None

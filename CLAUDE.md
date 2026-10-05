@@ -425,11 +425,14 @@ You are an information assistant, not an authorized decision maker.
 The initial retrieval process should:
 
 1. Receive the user's question.
-2. Normalize the query if necessary.
+2. **Rewrite a follow-up into a standalone question** using the conversation
+   history, skipping this on the first turn. Without this step, "How many days?"
+   is embedded literally and retrieves noise. Measured on the Phase 1 golden
+   set: follow-ups score 0/5 when retrieved on their raw text.
 3. Generate the query embedding.
 4. Search the vector database.
-5. Retrieve the top relevant chunks.
-6. Apply relevance filtering.
+5. Retrieve the top relevant chunks, filtering to active document versions.
+6. Apply relevance filtering (see the threshold note in section 26).
 7. Construct the context.
 8. Send context + question to the LLM.
 
@@ -622,7 +625,14 @@ or:
 </iframe>
 ```
 
-The final implementation should prefer a secure and maintainable embedding approach.
+**Decided in Phase 1: iframe, not DOM injection.** A script that injects Jarvis
+into the host page has to fight the customer's CSS indefinitely, and gives the
+host page access to Jarvis's DOM. An iframe isolates styling in both directions.
+
+The iframe approach also needs no CORS configuration on the customer's side: the
+chat page calls the API on its own origin, so the host origin is never involved.
+Verified by embedding into a site whose origin was absent from the allowlist.
+Only direct API integration from a customer's own JavaScript requires CORS.
 
 ---
 
@@ -945,7 +955,12 @@ JARVIS_NAME=Jarvis
 COMPANY_NAME=
 
 TOP_K=5
-SIMILARITY_THRESHOLD=0.70
+# Calibrated per embedding model against the golden set -- never guessed.
+# A sweep on the Phase 1 corpus measured the original 0.70 suggestion at
+# 0% page hits and 100% over-refusal: Jarvis refused every question.
+#   EMBEDDING_PROVIDER=openai   -> 0.35
+#   EMBEDDING_PROVIDER=hashing  -> 0.20
+RELEVANCE_FLOOR=0.35
 ```
 
 Never commit actual credentials.
@@ -1359,6 +1374,10 @@ Add:
 ---
 
 ## Phase 6 — Production RAG
+
+**Note from Phase 1:** evaluation did not wait until this phase. Chunk size and
+the relevance floor cannot be tuned without a golden set, so the harness was
+built in Phase 1 and every improvement below is measured against it.
 
 Improve:
 

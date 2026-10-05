@@ -45,3 +45,19 @@ async def test_health_does_not_call_the_llm_provider(client):
 
     assert body["checks"]["llm"]["provider"] == "openai"
     assert body["checks"]["llm"]["configured"] is True
+
+
+async def test_health_answers_head_requests(client):
+    """Load balancers and uptime monitors commonly probe with HEAD.
+
+    A GET-only route answers those with 405, which reads as an outage.
+    """
+    response = await client.head("/api/health")
+
+    assert response.status_code == 200
+
+
+async def test_the_chat_page_answers_head_requests(client):
+    response = await client.head("/")
+
+    assert response.status_code == 200

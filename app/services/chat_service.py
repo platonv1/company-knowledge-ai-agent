@@ -46,6 +46,10 @@ class ChatAnswer:
     retrieved_count: int = 0
     rewritten_query: str | None = None
     best_score: float | None = None
+    # The passages the answer was built from. Not returned over HTTP; used by
+    # the evaluation judge, which must see the evidence to assess whether the
+    # answer is supported by it, and by anyone debugging a bad answer.
+    context_text: str | None = None
 
 
 class ChatService:
@@ -125,6 +129,7 @@ class ChatService:
             retrieved_count=len(retrieval.chunks),
             rewritten_query=rewritten,
             best_score=retrieval.best_score,
+            context_text=context.text,
         )
 
     async def _resolve_query(

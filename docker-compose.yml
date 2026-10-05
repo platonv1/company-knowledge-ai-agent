@@ -17,5 +17,24 @@ services:
       timeout: 5s
       retries: 10
 
+  # Behind the "app" profile, so `docker compose up -d` still starts only the
+  # database for local development against a venv. Run the full stack with:
+  #   docker compose --profile app up -d --build
+  app:
+    build: .
+    image: jarvis:local
+    container_name: jarvis-app
+    profiles: ["app"]
+    env_file: .env
+    environment:
+      # Inside the compose network the database is "db" on its own port, which
+      # overrides the host-facing localhost:5433 in .env.
+      DATABASE_URL: postgresql+asyncpg://jarvis:jarvis@db:5432/jarvis
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
 volumes:
   jarvis-pgdata:

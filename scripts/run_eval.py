@@ -169,7 +169,7 @@ def print_summary(summary: EvalSummary, label: str) -> None:
     if summary.faithfulness_rate is not None:
         print(
             f"  Faithfulness (judged)       {summary.faithfulness_rate:6.1%}  "
-            f"({summary.faithful}/{summary.answered})"
+            f"({summary.faithful}/{summary.judged} judged)"
         )
 
 
@@ -326,7 +326,9 @@ async def run(args) -> int:
         outcomes = to_outcomes(cases, candidates, config)
 
         if args.with_answers:
-            outcomes = await score_answers(session, settings, cases, outcomes, organization.id)
+            outcomes = await score_answers(
+                session, settings, cases, outcomes, organization.id, judge=not args.no_judge
+            )
 
         summary = summarise(outcomes, archived)
         print_summary(
@@ -343,7 +345,7 @@ async def run(args) -> int:
     return 0
 
 
-async def score_answers(session, settings, cases, outcomes, org_id):
+async def score_answers(session, settings, cases, outcomes, org_id, judge: bool = True):
     """Generate answers and judge them. Requires a live model."""
     from dataclasses import replace
 
@@ -353,6 +355,19 @@ async def score_answers(session, settings, cases, outcomes, org_id):
     from app.rag.retriever import RetrievalConfig, Retriever
     from app.repositories.conversation_repository import ConversationRepository
     from app.services.chat_service import ChatService
+    from scripts.eval_judge import judge_answer
+
+    llm = build_llm_service(settings)
+
+    # The offline extractive provider selects sentences; it cannot assess whether
+    # a claim follows from a passage, so judging with it would produce a number
+    # that looks like a measurement and is not one.
+    if judge and settings.llm_provider.lower() != "openai":
+        print(
+            f"Faithfulness judging skipped: LLM_PROVIDER={settings.llm_provider!r} "
+            "cannot judge. Use an API-backed provider to score faithfulness."
+        )
+        judge = False
 
     service = ChatService(
         retriever=Retriever(
@@ -360,7 +375,7 @@ async def score_answers(session, settings, cases, outcomes, org_id):
             embedder=build_embedding_service(settings),
             config=RetrievalConfig.from_settings(settings),
         ),
-        llm=build_llm_service(settings),
+        llm=llm,
         conversations=ConversationRepository(session),
         assistant_name=settings.jarvis_name,
         company_name=settings.company_name,
@@ -393,6 +408,12 @@ async def score_answers(session, settings, cases, outcomes, org_id):
         if case["kind"] == "unanswerable":
             matched = refused
 
+        faithful = None
+        if judge:
+            faithful = await judge_answer(
+                llm, case["question"], result.context_text or "", result.answer
+            )
+
         scored.append(
             replace(
                 outcome,
@@ -400,6 +421,7 @@ async def score_answers(session, settings, cases, outcomes, org_id):
                 refused=refused,
                 answer_matched=matched,
                 citations_valid=all(s.page >= 1 for s in result.sources),
+                faithful=faithful,
             )
         )
         if index % 10 == 0:
@@ -423,6 +445,11 @@ def main() -> None:
     )
     parser.add_argument("--top-ks", dest="top_ks", type=int, nargs="+", default=[5])
     parser.add_argument("--dropoff", type=float, default=0.75)
+    parser.add_argument(
+        "--no-judge",
+        action="store_true",
+        help="Skip faithfulness judging when generating answers.",
+    )
     parser.add_argument("--save", action="store_true", help="Write a JSON result file.")
     args = parser.parse_args()
 

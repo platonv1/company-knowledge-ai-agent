@@ -1,5 +1,7 @@
 # Jarvis — Company Knowledge Assistant
 
+[![CI](https://github.com/platonv1/company-knowledge-ai-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/platonv1/company-knowledge-ai-agent/actions/workflows/ci.yml)
+
 A grounded RAG assistant over a company's controlled documents. It answers from the
 knowledge base, cites the document and page behind every claim, and says so when the
 documents don't cover a question.
@@ -149,6 +151,7 @@ is hand-typed and it cannot drift from the documents.
 | Refusal accuracy, gate only | 27.3% (3/11) |
 | **Refusal accuracy, end to end** | **81.8% (9/11)** |
 | **Citations resolvable** | **72/72** |
+| Faithfulness (LLM-as-judge) | needs an API key — the offline provider cannot judge |
 | **Version leaks** | **0** |
 | Follow-ups, evaluated without rewriting | **0/5** |
 
@@ -214,6 +217,10 @@ scripts/         generate_corpus · ingest_documents · run_eval · corpus_*
 alembic/         one migration: tenant-ready schema + HNSW index
 ```
 
+A `Dockerfile` builds a ~110 MB image that runs as an unprivileged user and reports
+container health from `/api/health`; `docker compose --profile app up` runs it next to the
+database. CI runs lint, the full suite against pgvector, and the image build on every push.
+
 `org_id` is in the schema from the first migration even though one organization exists today —
 retrofitting tenant isolation is a rewrite, adding a column now is free. `doc_status` is
 denormalised onto `chunks` so the active-version filter hits an index without a join; the cost
@@ -222,7 +229,7 @@ is that archiving must propagate, which `set_document_status` does in one transa
 ## Tests
 
 ```bash
-.venv/bin/python -m pytest        # 174 tests
+.venv/bin/python -m pytest        # 194 tests
 ```
 
 Unit tests make no network calls and use fakes for all three provider interfaces. Integration

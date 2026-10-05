@@ -21,7 +21,9 @@ logger = get_logger(__name__)
 PLACEHOLDER_KEYS = {"", "sk-REPLACE-ME", "change-me-in-production"}
 
 
-@router.get("/health")
+# HEAD as well as GET: uptime monitors and load balancer probes commonly use
+# HEAD, and a GET-only route answers those with 405, which reads as an outage.
+@router.api_route("/health", methods=["GET", "HEAD"])
 async def health(
     response: Response,
     db: DbSession,

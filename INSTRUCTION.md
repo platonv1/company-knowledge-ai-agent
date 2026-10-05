@@ -7,6 +7,7 @@ yet, it says so rather than describing an intention.
 
 - [1. Before you start](#1-before-you-start)
 - [2. Run it locally](#2-run-it-locally)
+- [2b. Or run it with Docker](#2b-or-run-it-with-docker)
 - [3. Switch to real models](#3-switch-to-real-models)
 - [4. Load your own documents](#4-load-your-own-documents)
 - [5. Check it is working](#5-check-it-is-working)
@@ -108,6 +109,34 @@ Open **<http://localhost:8000>**.
 
 > The three overrides select the offline providers and the relevance floor calibrated for
 > them. Drop all three once you have an API key — see the next section.
+
+---
+
+## 2b. Or run it with Docker
+
+The repository ships a `Dockerfile` and a compose profile that runs the application next to
+the database, so you do not need Python installed.
+
+```bash
+cp .env.example .env          # set ADMIN_API_KEY, and OPENAI_API_KEY if you have one
+docker compose --profile app up -d --build
+
+docker compose --profile app exec app alembic upgrade head
+docker compose --profile app exec app python -m scripts.generate_corpus
+docker compose --profile app exec app python -m scripts.ingest_documents documents/ --reset
+```
+
+Open <http://localhost:8000>.
+
+Notes:
+
+- `docker compose up -d` without `--profile app` still starts **only the database**, which is
+  what you want when developing against a local virtual environment.
+- The container reads `.env`, but `DATABASE_URL` is overridden inside the compose network —
+  the database is `db:5432` there, not `localhost:5433`.
+- It runs as an unprivileged user and reports container health from `/api/health`.
+- To run with the offline providers, add them to the `app` service `environment:` block, or
+  pass them with `docker compose --profile app exec -e EMBEDDING_PROVIDER=hashing ...`.
 
 ---
 
@@ -415,8 +444,12 @@ results. With `EMBEDDING_PROVIDER=hashing`, use `0.20`, not the `0.35` default.
 Almost always a provider change without re-indexing. Re-run ingestion with `--reset`.
 
 **`502` from `/api/chat`**
-Jarvis could not reach the model provider. Check `OPENAI_API_KEY`, or run with
-`LLM_PROVIDER=extractive` to confirm the rest of the pipeline is fine.
+Jarvis could not reach its model provider — either the embedding call or the answer call.
+Check `OPENAI_API_KEY` and your network. To confirm the rest of the pipeline is healthy, run
+with `EMBEDDING_PROVIDER=hashing LLM_PROVIDER=extractive`, which contacts nothing.
+
+The response body never contains the API key, and the server log records the error type
+rather than the provider's message, which echoes the key back.
 
 **`503` from the document endpoints**
 `ADMIN_API_KEY` is unset or still `change-me-in-production`. It fails closed by design.
@@ -434,11 +467,6 @@ application sets neither.
 **Calls from my own JavaScript are blocked by CORS**
 Your origin is not in `CORS_ALLOWED_ORIGINS`. Include the scheme and any `www.` variant.
 Option A does not need this; only Option C does.
-
-**`HEAD` requests return 405**
-`HEAD /` and `HEAD /api/health` return `405 Method Not Allowed` — the routes are declared
-GET-only. Configure uptime monitors and load balancer probes to use **GET**. If you need HEAD,
-change the health route to `@router.api_route("/health", methods=["GET", "HEAD"])`.
 
 **Tests wipe my documents**
 They should not — the test suite uses a separate `jarvis_test` database. If it happens, check

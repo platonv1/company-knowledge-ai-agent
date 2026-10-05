@@ -244,3 +244,27 @@ async def test_an_empty_message_is_rejected(db_session, org):
 
     with pytest.raises(ValueError):
         await service.answer("   ", org_id=org.id)
+
+
+async def test_the_answer_carries_the_context_it_was_built_from(db_session, org):
+    """The evaluation judge has to see the passages the answer was based on.
+
+    Re-retrieving them afterwards is not equivalent: a follow-up is answered
+    against a rewritten query, so a second retrieval can return a different set.
+    """
+    service, _, _ = build_service(
+        db_session, [search_result()], ["Employees receive 15 days. [S1]"]
+    )
+
+    answer = await service.answer("How many leave days?", org_id=org.id)
+
+    assert "15 days of paid annual leave" in answer.context_text
+    assert '<source id="S1"' in answer.context_text
+
+
+async def test_a_refusal_carries_no_context(db_session, org):
+    service, _, _ = build_service(db_session, [search_result(score=0.1)], [])
+
+    answer = await service.answer("Does the company offer pet insurance?", org_id=org.id)
+
+    assert answer.context_text is None

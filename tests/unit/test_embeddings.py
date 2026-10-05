@@ -9,7 +9,11 @@ import math
 
 import pytest
 
-from app.rag.embeddings import HashingEmbeddingService, OpenAIEmbeddingService
+from app.rag.embeddings import (
+    EmbeddingError,
+    HashingEmbeddingService,
+    OpenAIEmbeddingService,
+)
 
 DIMENSIONS = 256
 
@@ -116,3 +120,45 @@ async def test_openai_provider_sends_one_request_for_a_query():
     await service.embed_query("what is the vision")
 
     assert client.batch_sizes == [1]
+
+
+class FailingClient:
+    """Stands in for a provider rejecting the request (bad key, quota, outage)."""
+
+    def __init__(self):
+        self.embeddings = self
+
+    async def create(self, **_):
+        raise RuntimeError("Error code: 401 - Incorrect API key provided: sk-abc123secret")
+
+
+async def test_a_provider_failure_is_wrapped_in_embedding_error():
+    """An unwrapped provider exception reaches FastAPI as a bare 500 with a
+    stack trace, instead of the clean 502 the chat endpoint produces for an LLM
+    failure. Callers cannot distinguish "we are broken" from "you sent nonsense"."""
+    service = OpenAIEmbeddingService(
+        client=FailingClient(), model="text-embedding-3-small", dimensions=DIMENSIONS
+    )
+
+    with pytest.raises(EmbeddingError):
+        await service.embed_query("a question")
+
+
+async def test_the_wrapped_error_does_not_echo_the_api_key():
+    service = OpenAIEmbeddingService(
+        client=FailingClient(), model="text-embedding-3-small", dimensions=DIMENSIONS
+    )
+
+    with pytest.raises(EmbeddingError) as exc:
+        await service.embed_documents(["some chunk"])
+
+    assert "sk-abc123secret" not in str(exc.value)
+
+
+async def test_document_embedding_failures_are_wrapped_too():
+    service = OpenAIEmbeddingService(
+        client=FailingClient(), model="text-embedding-3-small", dimensions=DIMENSIONS
+    )
+
+    with pytest.raises(EmbeddingError):
+        await service.embed_documents(["chunk one", "chunk two"])

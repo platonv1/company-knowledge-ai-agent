@@ -1,0 +1,92 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install ruff
+        run: pip install "$(grep '^ruff==' requirements-dev.txt)"
+
+      - run: ruff check app scripts tests alembic
+      - run: ruff format --check app scripts tests
+
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+
+    services:
+      # Same image as docker-compose.yml, so CI and local development run the
+      # same Postgres and the same pgvector build.
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: jarvis
+          POSTGRES_PASSWORD: jarvis
+          POSTGRES_DB: jarvis_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U jarvis -d jarvis_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      # The suite applies migrations itself and uses offline providers, so no
+      # API key is needed and no network call is made.
+      DATABASE_URL: postgresql+asyncpg://jarvis:jarvis@localhost:5432/jarvis_test
+      OPENAI_API_KEY: not-used-in-tests
+      ADMIN_API_KEY: test-admin-key
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Run tests
+        run: pytest -q
+
+  docker:
+    name: Docker image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Build image
+        run: docker build -t jarvis:ci .
+
+      - name: Check it runs unprivileged and is importable
+        run: |
+          test "$(docker run --rm jarvis:ci id -u)" = "10001"
+          # Settings are required at import time (the app refuses to start
+          # unconfigured), so placeholders are supplied purely to construct it.
+          # No database is contacted.
+          docker run --rm \
+            -e DATABASE_URL=postgresql+asyncpg://u:p@localhost:5432/db \
+            -e OPENAI_API_KEY=unused \
+            -e ADMIN_API_KEY=unused \
+            jarvis:ci python -c "import app.main; print('app imports cleanly')"
