@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Jarvis — Jarvis Financial Group</title>
+<meta name="description" content="Ask about Jarvis Financial Group policies, products, and procedures. Every answer cites the document it came from.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+<a class="skip" href="#ask">Skip to the question box</a>
+
+<header class="masthead">
+  <div class="masthead__inner">
+    <div class="identity">
+      <span class="identity__mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.6">
+          <path d="M4 7h16M4 12h16M4 17h10"/>
+          <circle cx="18.5" cy="17" r="3.2"/>
+          <path d="M20.8 19.3 23 21.5"/>
+        </svg>
+      </span>
+      <span class="identity__text">
+        <strong>Jarvis</strong>
+        <span>Jarvis Financial Group</span>
+      </span>
+    </div>
+    <p class="holding" id="holding" aria-live="polite">Checking the knowledge base&hellip;</p>
+  </div>
+</header>
+
+<main>
+  <section class="opening" id="opening">
+    <h1>Ask about our policies, products and procedures.</h1>
+    <p class="opening__lede">
+      Jarvis answers only from the organisation's controlled documents, and shows you the
+      document and page behind every answer. When the documents don't cover something, it
+      says so rather than guessing.
+    </p>
+    <div class="starters" role="group" aria-label="Example questions">
+      <button class="starter" type="button">How many annual leave days do employees get?</button>
+      <button class="starter" type="button">What is the reporting threshold for cash transactions?</button>
+      <button class="starter" type="button">What are the wire transfer fees?</button>
+      <button class="starter" type="button">When was the company founded?</button>
+    </div>
+  </section>
+
+  <div class="transcript" id="transcript" aria-live="polite" aria-label="Conversation"></div>
+</main>
+
+<form class="ask" id="ask" autocomplete="off">
+  <div class="ask__inner">
+    <label class="visually-hidden" for="question">Your question</label>
+    <textarea id="question" name="question" rows="1" placeholder="Ask a question about the company" maxlength="2000" required></textarea>
+    <button class="ask__send" type="submit" id="send">
+      <span class="ask__send-label">Ask</span>
+    </button>
+  </div>
+  <p class="ask__note">
+    Jarvis reports what the documentation states. It does not interpret or create policy.
+  </p>
+</form>
+
+<template id="tpl-exchange">
+  <article class="record">
+    <p class="record__question"></p>
+    <div class="record__answer"></div>
+    <div class="record__refs" hidden>
+      <h2 class="record__refs-title">Where this comes from</h2>
+      <ol class="refs"></ol>
+    </div>
+  </article>
+</template>
+
+<template id="tpl-ref">
+  <li class="ref">
+    <span class="ref__marker"></span>
+    <span class="ref__body">
+      <span class="ref__title"></span>
+      <span class="ref__meta"></span>
+    </span>
+  </li>
+</template>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

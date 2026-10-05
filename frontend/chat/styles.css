@@ -1,0 +1,366 @@
+/* Jarvis — Jarvis Financial Group
+   Palette taken from banking document materials rather than the default
+   corporate navy: the pale green-grey of cheque security paper, ink, a deep
+   institutional green for action, and claret reserved exclusively for
+   "no record found". Colour carries state here; it is not decoration. */
+
+:root {
+  --paper:      #edf1ee;
+  --surface:    #ffffff;
+  --ink:        #15211d;
+  --ink-soft:   #4a5a54;
+  --ink-faint:  #71817a;
+  --rule:       #cbd7d0;
+  --rule-soft:  #e0e8e3;
+  --green:      #1f5c4b;
+  --green-deep: #143d32;
+  --claret:     #7a2e3b;
+  --claret-pale:#f6eced;
+
+  --serif: "Newsreader", Georgia, serif;
+  --sans:  "IBM Plex Sans", system-ui, -apple-system, sans-serif;
+
+  --measure: 64ch;
+  --gutter: 16px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper:      #111a17;
+    --surface:    #18231f;
+    --ink:        #e8efea;
+    --ink-soft:   #a9b8b1;
+    --ink-faint:  #869790;
+    --rule:       #2c3a34;
+    --rule-soft:  #222e29;
+    --green:      #6fbfa3;
+    --green-deep: #8fd4ba;
+    --claret:     #e2a0ac;
+    --claret-pale:#2a1b1f;
+  }
+}
+
+:root[data-theme="dark"] {
+  --paper: #111a17; --surface: #18231f; --ink: #e8efea; --ink-soft: #a9b8b1;
+  --ink-faint: #869790; --rule: #2c3a34; --rule-soft: #222e29;
+  --green: #6fbfa3; --green-deep: #8fd4ba; --claret: #e2a0ac; --claret-pale: #2a1b1f;
+}
+
+* { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 16px;
+  line-height: 1.5;
+}
+
+.visually-hidden {
+  position: absolute; width: 1px; height: 1px; overflow: hidden;
+  clip-path: inset(50%); white-space: nowrap;
+}
+
+.skip {
+  position: absolute; left: 50%; top: -3rem; transform: translateX(-50%);
+  z-index: 10; background: var(--green-deep); color: #fff;
+  padding: .6rem 1rem; border-radius: 0 0 3px 3px; text-decoration: none;
+  font-size: .875rem;
+}
+.skip:focus { top: 0; }
+
+:where(a, button, textarea):focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: 2px;
+}
+
+/* ---------- masthead ---------- */
+
+.masthead {
+  border-bottom: 1px solid var(--rule);
+  background: var(--surface);
+  position: sticky;
+  top: 0;
+  z-index: 5;
+}
+
+.masthead__inner {
+  max-width: 78ch;
+  margin: 0 auto;
+  padding: .9rem var(--gutter);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.identity { display: flex; align-items: center; gap: .6rem; }
+
+.identity__mark {
+  display: grid; place-items: center;
+  width: 2.1rem; height: 2.1rem;
+  color: var(--surface);
+  background: var(--green-deep);
+  border-radius: 3px;
+}
+
+.identity__text { display: flex; flex-direction: column; line-height: 1.2; }
+.identity__text strong { font-weight: 600; font-size: 1.05rem; letter-spacing: -.01em; }
+.identity__text span { font-size: .8rem; color: var(--ink-faint); }
+
+.holding {
+  margin: 0;
+  font-size: .8rem;
+  color: var(--ink-soft);
+  font-variant-numeric: tabular-nums;
+}
+.holding strong { font-weight: 600; color: var(--ink); }
+.holding[data-state="down"] { color: var(--claret); }
+
+/* ---------- opening ---------- */
+
+main {
+  flex: 1;
+  width: 100%;
+  max-width: 78ch;
+  margin: 0 auto;
+  padding: 2.5rem var(--gutter) 1rem;
+}
+
+.opening h1 {
+  font-family: var(--serif);
+  font-weight: 400;
+  font-size: clamp(1.7rem, 4.6vw, 2.5rem);
+  line-height: 1.18;
+  letter-spacing: -.015em;
+  margin: 0 0 .9rem;
+  max-width: 34ch;
+}
+
+.opening__lede {
+  margin: 0 0 1.8rem;
+  max-width: var(--measure);
+  color: var(--ink-soft);
+  font-size: .95rem;
+  line-height: 1.6;
+}
+
+.starters { display: flex; flex-wrap: wrap; gap: .5rem; }
+
+.starter {
+  font: inherit;
+  font-size: .875rem;
+  text-align: left;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  padding: .55rem .8rem;
+  cursor: pointer;
+  transition: border-color .15s, color .15s;
+}
+.starter:hover { border-color: var(--green); color: var(--green-deep); }
+
+.opening[hidden] { display: none; }
+
+/* ---------- transcript ---------- */
+
+.transcript { display: flex; flex-direction: column; gap: 2.25rem; }
+
+.record { border-top: 1px solid var(--rule-soft); padding-top: 1.35rem; }
+.record:first-child { border-top: 0; padding-top: 0; }
+
+.record__question {
+  margin: 0 0 1rem;
+  padding-left: .85rem;
+  border-left: 2px solid var(--green);
+  font-size: 1rem;
+  font-weight: 500;
+  color: var(--ink);
+  max-width: var(--measure);
+}
+
+.record__answer {
+  font-family: var(--serif);
+  font-size: 1.12rem;
+  line-height: 1.62;
+  max-width: var(--measure);
+  color: var(--ink);
+}
+.record__answer p { margin: 0 0 .85rem; }
+.record__answer p:last-child { margin-bottom: 0; }
+
+/* Inline citation markers: small, quiet, and clearly not part of the prose. */
+.cite {
+  font-family: var(--sans);
+  font-size: .72em;
+  font-weight: 500;
+  color: var(--green-deep);
+  background: var(--rule-soft);
+  border-radius: 2px;
+  padding: .1em .35em;
+  margin-left: .15em;
+  vertical-align: .08em;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The refusal is a defined state, not a failure. Claret appears nowhere else. */
+.record__answer[data-grounded="false"] {
+  font-family: var(--sans);
+  font-size: 1rem;
+  color: var(--claret);
+  background: var(--claret-pale);
+  border-left: 2px solid var(--claret);
+  padding: .9rem 1rem;
+}
+
+.record__refs { margin-top: 1.4rem; }
+
+.record__refs-title {
+  margin: 0 0 .6rem;
+  font-size: .8rem;
+  font-weight: 600;
+  color: var(--ink-faint);
+}
+
+.refs { list-style: none; margin: 0; padding: 0; display: grid; gap: .5rem; }
+
+.ref {
+  display: flex;
+  gap: .7rem;
+  align-items: baseline;
+  background: var(--surface);
+  border: 1px solid var(--rule-soft);
+  border-radius: 3px;
+  padding: .6rem .75rem;
+}
+
+.ref__marker {
+  flex: none;
+  font-size: .72rem;
+  font-weight: 600;
+  color: var(--green-deep);
+  font-variant-numeric: tabular-nums;
+}
+
+.ref__body { display: flex; flex-direction: column; gap: .15rem; min-width: 0; }
+.ref__title { font-size: .9rem; font-weight: 500; }
+.ref__meta {
+  font-size: .8rem;
+  color: var(--ink-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+/* One orchestrated reveal: the references settle in after the answer. */
+@media (prefers-reduced-motion: no-preference) {
+  .record__refs { animation: settle .32s ease-out both; }
+}
+@keyframes settle {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* Working indicator reads as a document being scanned, not bouncing dots. */
+.scanning {
+  height: 2px;
+  background: var(--rule-soft);
+  overflow: hidden;
+  max-width: var(--measure);
+  border-radius: 2px;
+}
+.scanning::after {
+  content: "";
+  display: block;
+  height: 100%;
+  width: 35%;
+  background: var(--green);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .scanning::after { animation: sweep 1.05s ease-in-out infinite; }
+}
+@keyframes sweep {
+  from { transform: translateX(-100%); }
+  to   { transform: translateX(300%); }
+}
+
+.failure {
+  max-width: var(--measure);
+  font-size: .95rem;
+  color: var(--claret);
+  background: var(--claret-pale);
+  border-left: 2px solid var(--claret);
+  padding: .8rem 1rem;
+}
+
+/* ---------- ask ---------- */
+
+.ask {
+  position: sticky;
+  bottom: 0;
+  background: var(--paper);
+  border-top: 1px solid var(--rule);
+  padding: .9rem var(--gutter) 1rem;
+}
+
+.ask__inner {
+  max-width: 78ch;
+  margin: 0 auto;
+  display: flex;
+  gap: .6rem;
+  align-items: flex-end;
+}
+
+.ask textarea {
+  flex: 1;
+  font: inherit;
+  font-size: 1rem;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  padding: .7rem .8rem;
+  resize: none;
+  max-height: 9rem;
+  line-height: 1.45;
+}
+.ask textarea::placeholder { color: var(--ink-faint); }
+
+.ask__send {
+  font: inherit;
+  font-size: .95rem;
+  font-weight: 500;
+  color: #fff;
+  background: var(--green-deep);
+  border: 1px solid var(--green-deep);
+  border-radius: 3px;
+  padding: .72rem 1.15rem;
+  cursor: pointer;
+  transition: background .15s;
+}
+.ask__send:hover:not(:disabled) { background: var(--green); border-color: var(--green); }
+.ask__send:disabled { opacity: .5; cursor: default; }
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .ask__send,
+  :root:not([data-theme="light"]) .identity__mark { color: #0d1512; }
+}
+
+.ask__note {
+  max-width: 78ch;
+  margin: .6rem auto 0;
+  font-size: .75rem;
+  color: var(--ink-faint);
+}
+
+@media (max-width: 560px) {
+  main { padding-top: 1.75rem; }
+  .masthead__inner { padding-block: .75rem; }
+  .record__answer { font-size: 1.05rem; }
+}
