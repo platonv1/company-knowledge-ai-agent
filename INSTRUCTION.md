@@ -443,8 +443,12 @@ results. With `EMBEDDING_PROVIDER=hashing`, use `0.20`, not the `0.35` default.
 **Answers are irrelevant or scrambled**
 Almost always a provider change without re-indexing. Re-run ingestion with `--reset`.
 
-**`502` from `/api/chat`**
+**`502` from `/api/chat`, or `credit_balance_exhausted` when ingesting**
 Jarvis could not reach its model provider — either the embedding call or the answer call.
+The server log carries the provider's own explanation with API keys stripped out, so read it
+there first. A valid key on an account with no credit reports `insufficient_quota` /
+`credit_balance_exhausted` and surfaces as a 429: retrying never clears it, you have to add
+credit at <https://platform.openai.com/settings/organization/billing/>.
 Check `OPENAI_API_KEY` and your network. To confirm the rest of the pipeline is healthy, run
 with `EMBEDDING_PROVIDER=hashing LLM_PROVIDER=extractive`, which contacts nothing.
 

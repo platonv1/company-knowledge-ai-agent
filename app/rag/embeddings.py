@@ -19,7 +19,7 @@ import re
 from abc import ABC, abstractmethod
 
 from app.core.config import Settings
-from app.core.logging import get_logger
+from app.core.logging import get_logger, redact_keys
 
 logger = get_logger(__name__)
 
@@ -129,10 +129,13 @@ class OpenAIEmbeddingService(EmbeddingService):
             )
         except Exception as exc:  # noqa: BLE001 - callers see one error type
             # Wrapped so a provider outage or a bad key becomes a clean 502
-            # rather than a bare 500 with a traceback. The provider's message is
-            # deliberately not included: it echoes the API key back.
+            # rather than a bare 500 with a traceback. The provider's own message
+            # is kept, with keys redacted: without it, an exhausted credit
+            # balance arrives as "RateLimitError", which reads as "retry later"
+            # when retrying will never succeed.
             raise EmbeddingError(
-                f"Embedding request to {self._model} failed ({type(exc).__name__})."
+                f"Embedding request to {self._model} failed "
+                f"({type(exc).__name__}): {redact_keys(str(exc))}"
             ) from exc
 
         vectors = [item.embedding for item in response.data]

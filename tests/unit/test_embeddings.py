@@ -162,3 +162,48 @@ async def test_document_embedding_failures_are_wrapped_too():
 
     with pytest.raises(EmbeddingError):
         await service.embed_documents(["chunk one", "chunk two"])
+
+
+class QuotaExhaustedClient:
+    """Reproduces the real failure: a valid key with no credit on the account."""
+
+    def __init__(self):
+        self.embeddings = self
+
+    async def create(self, **_):
+        raise RuntimeError(
+            "Error code: 429 - {'error': {'message': 'You have no credits remaining. "
+            "Add credits to continue using the API.', 'type': 'insufficient_quota'}}"
+        )
+
+
+async def test_the_wrapped_error_keeps_the_providers_explanation():
+    """Hiding the provider's message turned a one-line diagnosis into a dig.
+
+    "RateLimitError" alone suggests "slow down and retry", when the real cause
+    was an exhausted credit balance that retrying never fixes.
+    """
+    service = OpenAIEmbeddingService(
+        client=QuotaExhaustedClient(), model="text-embedding-3-small", dimensions=DIMENSIONS
+    )
+
+    with pytest.raises(EmbeddingError) as exc:
+        await service.embed_query("a question")
+
+    assert "no credits remaining" in str(exc.value)
+
+
+async def test_a_key_in_the_providers_message_is_still_redacted():
+    # The message is only safe to surface once keys are stripped from it:
+    # OpenAI's auth error quotes the key back verbatim.
+    service = OpenAIEmbeddingService(
+        client=FailingClient(), model="text-embedding-3-small", dimensions=DIMENSIONS
+    )
+
+    with pytest.raises(EmbeddingError) as exc:
+        await service.embed_query("a question")
+
+    message = str(exc.value)
+    assert "sk-abc123secret" not in message
+    assert "Incorrect API key provided" in message
+    assert "sk-<redacted>" in message

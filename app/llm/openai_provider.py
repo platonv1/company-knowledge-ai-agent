@@ -1,6 +1,6 @@
 """OpenAI implementation of LLMService."""
 
-from app.core.logging import get_logger
+from app.core.logging import get_logger, redact_keys
 from app.llm.base import ChatTurn, LLMError, LLMService
 
 logger = get_logger(__name__)
@@ -40,7 +40,10 @@ class OpenAILLMService(LLMService):
                 temperature=temperature,
             )
         except Exception as exc:  # noqa: BLE001 - wrapped so callers see one error type
-            raise LLMError(f"LLM request failed: {exc}") from exc
+            # The provider's message is kept because it explains the failure,
+            # but OpenAI's auth error quotes the API key back, so it is
+            # redacted before it can reach an exception message or a log line.
+            raise LLMError(f"LLM request failed: {redact_keys(str(exc))}") from exc
 
         content = response.choices[0].message.content
         if not content or not content.strip():
