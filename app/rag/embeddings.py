@@ -13,6 +13,7 @@ Switching provider requires a full re-embed of the corpus: vectors from
 different models are not comparable, so a mixed index silently returns nonsense.
 """
 
+import asyncio
 import hashlib
 import math
 import re
@@ -26,6 +27,10 @@ logger = get_logger(__name__)
 # OpenAI accepts far more per request, but large batches make a single failure
 # expensive to retry and make progress logging useless.
 DEFAULT_BATCH_SIZE = 128
+
+# Small, strong, and 384-dimensional. Changing this changes the vector
+# dimension, which needs a migration and a full re-index.
+DEFAULT_LOCAL_MODEL = "BAAI/bge-small-en-v1.5"
 
 _WORD = re.compile(r"[a-z0-9]+")
 
@@ -163,6 +168,11 @@ def build_embedding_service(settings: Settings) -> EmbeddingService:
     """Construct the configured provider."""
     provider = settings.embedding_provider.lower()
 
+    if provider == "local":
+        return LocalEmbeddingService(
+            model_name=settings.embedding_model, dimensions=settings.embedding_dimensions
+        )
+
     if provider == "hashing":
         return HashingEmbeddingService(dimensions=settings.embedding_dimensions)
 
@@ -177,5 +187,69 @@ def build_embedding_service(settings: Settings) -> EmbeddingService:
 
     raise EmbeddingError(
         f"Unknown EMBEDDING_PROVIDER {settings.embedding_provider!r}; "
-        "expected 'openai' or 'hashing'."
+        "expected 'openai', 'local' or 'hashing'."
     )
+
+
+class LocalEmbeddingService(EmbeddingService):
+    """Embeddings computed on this machine via ONNX, with no API key.
+
+    Chosen over `sentence-transformers` because that pulls in PyTorch at roughly
+    2 GB for inference this size does not need; fastembed runs the same models
+    through onnxruntime in about 50 MB.
+
+    The model is loaded lazily, so importing this module costs nothing and the
+    first use pays the one-off download. Inference is synchronous and
+    CPU-bound, so it runs in a worker thread -- embedding a batch on the event
+    loop would stall every other request the server is handling.
+    """
+
+    def __init__(self, model_name: str = DEFAULT_LOCAL_MODEL, dimensions: int = 384):
+        self._model_name = model_name
+        self.dimensions = dimensions
+        self._model = None
+
+    @property
+    def model_name(self) -> str:
+        return self._model_name
+
+    def _load(self):
+        if self._model is None:
+            try:
+                from fastembed import TextEmbedding
+            except ImportError as exc:  # pragma: no cover - dependency is declared
+                raise EmbeddingError(
+                    "EMBEDDING_PROVIDER=local needs fastembed: pip install -r requirements.txt"
+                ) from exc
+
+            logger.info("Loading local embedding model %s", self._model_name)
+            self._model = TextEmbedding(model_name=self._model_name)
+        return self._model
+
+    def _check_dimensions(self, vector: list[float]) -> list[float]:
+        if len(vector) != self.dimensions:
+            # pgvector would reject the insert, but with an opaque error. Failing
+            # here names both numbers, which is the whole diagnosis.
+            raise EmbeddingError(
+                f"{self._model_name} produced {len(vector)}-dimensional vectors but "
+                f"EMBEDDING_DIMENSIONS is {self.dimensions}. Set EMBEDDING_DIMENSIONS="
+                f"{len(vector)} and re-run the migration, or choose a matching model."
+            )
+        return vector
+
+    def _embed_sync(self, texts: list[str], as_query: bool) -> list[list[float]]:
+        model = self._load()
+        # query_embed applies whatever prefix the model expects for queries. For
+        # bge-small it is currently a no-op, but e5-family models require it.
+        generator = model.query_embed(texts) if as_query else model.embed(texts)
+        return [self._check_dimensions([float(x) for x in vector]) for vector in generator]
+
+    async def embed_documents(self, texts: list[str]) -> list[list[float]]:
+        cleaned = [self._require_text(text) for text in texts]
+        if not cleaned:
+            return []
+        return await asyncio.to_thread(self._embed_sync, cleaned, False)
+
+    async def embed_query(self, text: str) -> list[float]:
+        vectors = await asyncio.to_thread(self._embed_sync, [self._require_text(text)], True)
+        return vectors[0]

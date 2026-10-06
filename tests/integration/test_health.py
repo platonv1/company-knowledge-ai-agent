@@ -61,3 +61,15 @@ async def test_the_chat_page_answers_head_requests(client):
     response = await client.head("/")
 
     assert response.status_code == 200
+
+
+async def test_health_reports_the_databases_actual_vector_dimension(client):
+    """A configured dimension that disagrees with the column is the one failure
+    that corrupts the index silently rather than erroring, so health states both
+    numbers and whether they agree."""
+    body = (await client.get("/api/health")).json()
+    embeddings = body["checks"]["embeddings"]
+
+    assert embeddings["dimensions"] == 384
+    assert embeddings["database_dimensions"] == 384
+    assert embeddings["dimensions_match"] is True

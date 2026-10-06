@@ -24,11 +24,15 @@ yet, it says so rather than describing an intention.
 |---|---|---|
 | Docker | Runs Postgres with the pgvector extension | `docker --version` |
 | Python 3.12 | 3.13+ is untested here; some dependencies lag | `python3.12 --version` |
-| An OpenAI API key | Only for real answer quality — see below | — |
+| An OpenAI API key | Only for generating answers, not for search | — |
 
-**You do not need an API key to run this.** The project ships offline providers for both
-embedding and answering, so you can start it, ingest documents, ask questions and run the
-evaluation with no account anywhere. Answer quality is much lower; section 3 covers the swap.
+**You do not need an API key to run this.** Embeddings run on your machine, so indexing,
+search and the whole evaluation work offline and free. Only answer *writing* benefits from a
+paid model; section 3 covers that swap.
+
+Note that an API key that authenticates is not the same as an account that can bill. Both
+OpenAI and Anthropic return an "insufficient quota" error on a valid key with no credit, and
+a Claude or ChatGPT subscription does not include API credit — it is purchased separately.
 
 ---
 
@@ -85,9 +89,10 @@ Skip this step if you are going straight to your own documents (section 4).
 ### Step 6 — Index the documents
 
 ```bash
-EMBEDDING_PROVIDER=hashing \
-  .venv/bin/python -m scripts.ingest_documents documents/ --reset
+.venv/bin/python -m scripts.ingest_documents documents/ --reset
 ```
+
+The first run downloads the embedding model (~130 MB) once, then caches it.
 
 Expected output ends with:
 
@@ -101,14 +106,13 @@ Indexed 75 chunks for Jarvis Financial Group.
 ### Step 7 — Start the server
 
 ```bash
-EMBEDDING_PROVIDER=hashing RELEVANCE_FLOOR=0.20 LLM_PROVIDER=extractive \
-  .venv/bin/uvicorn app.main:app --port 8000
+LLM_PROVIDER=extractive .venv/bin/uvicorn app.main:app --port 8000
 ```
 
 Open **<http://localhost:8000>**.
 
-> The three overrides select the offline providers and the relevance floor calibrated for
-> them. Drop all three once you have an API key — see the next section.
+> Only the answerer is overridden. Embeddings already run locally, and the relevance floor in
+> `.env` is calibrated for them. Drop the override once you have API credit.
 
 ---
 
@@ -146,8 +150,12 @@ The offline providers exist so the project runs with no account. They are not go
 
 | Provider | What it does | What it cannot do |
 |---|---|---|
-| `hashing` embeddings | Matches on shared words | Recognise that "time off" and "annual leave" mean the same thing |
-| `extractive` answering | Picks the sentences with the most words in common | Paraphrase, combine two sources, or answer a question worded differently from the document |
+| `local` embeddings (default) | Real semantic matching, offline | Nothing significant — measured at 88.5% page hit on the golden set |
+| `extractive` answering | Picks sentences with the most words in common | Paraphrase, combine two sources, or refuse reliably |
+
+Switching embeddings to OpenAI is **not** an upgrade you need: it costs money, and it requires
+migrating the vector column back to 1536 dimensions plus a full re-index. The answerer is
+where a paid model actually pays off.
 
 To use real models, put a key in `.env`:
 
@@ -415,9 +423,9 @@ Set these in `.env`, or as environment variables, which take precedence.
 | `LLM_PROVIDER` | `openai` | `openai` or `extractive` (offline) |
 | `LLM_MODEL` | `gpt-4o` | Model used to write answers |
 | `LLM_FAST_MODEL` | `gpt-4o-mini` | Cheaper model used only to rewrite follow-up questions |
-| `EMBEDDING_PROVIDER` | `openai` | `openai` or `hashing` (offline) |
-| `EMBEDDING_MODEL` | `text-embedding-3-small` | Changing this requires a full re-index |
-| `RELEVANCE_FLOOR` | `0.35` | Below this, Jarvis refuses. **Calibrate per embedding model** |
+| `EMBEDDING_PROVIDER` | `local` | `local` (offline, free), `openai`, or `hashing` (tests) |
+| `EMBEDDING_MODEL` | `BAAI/bge-small-en-v1.5` | Changing this requires a migration and a full re-index |
+| `RELEVANCE_FLOOR` | `0.60` | Below this, Jarvis refuses. **Calibrate per embedding model** |
 | `TOP_K` | `5` | Passages sent to the model |
 | `SEARCH_K` | `8` | Passages retrieved before filtering |
 | `CHUNK_TARGET_TOKENS` | `600` | Passage size. Changing it requires a re-index |
@@ -436,9 +444,15 @@ Set these in `.env`, or as environment variables, which take precedence.
 Nothing is in the knowledge base. Run step 6. Confirm with `curl localhost:8000/api/health`.
 
 **Every question is refused**
-`RELEVANCE_FLOOR` is too high for your embedding provider, or you changed embedding provider
-without re-indexing. Run `python -m scripts.run_eval --sweep` and set the floor from the
-results. With `EMBEDDING_PROVIDER=hashing`, use `0.20`, not the `0.35` default.
+`RELEVANCE_FLOOR` is too high for your embedding provider, or you changed provider without
+re-indexing. Run `python -m scripts.run_eval --sweep` and set the floor from the results.
+Scores are not comparable across models: 0.60 suits the local model, 0.20 the hashing one.
+
+**Health returns 503 with `dimensions_match: false`**
+The configured `EMBEDDING_DIMENSIONS` disagrees with the database column. Vector dimension is
+fixed per column in pgvector, so run `alembic upgrade head` (or downgrade for a 1536-dimension
+provider) and re-ingest. This is checked explicitly because a mismatch otherwise corrupts
+retrieval silently.
 
 **Answers are irrelevant or scrambled**
 Almost always a provider change without re-indexing. Re-run ingestion with `--reset`.

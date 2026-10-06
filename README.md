@@ -41,11 +41,9 @@ cp .env.example .env
 
 .venv/bin/alembic upgrade head
 .venv/bin/python -m scripts.generate_corpus          # 13 PDFs into documents/
-EMBEDDING_PROVIDER=hashing RELEVANCE_FLOOR=0.20 \
-  .venv/bin/python -m scripts.ingest_documents documents/ --reset
+.venv/bin/python -m scripts.ingest_documents documents/ --reset
 
-EMBEDDING_PROVIDER=hashing RELEVANCE_FLOOR=0.20 LLM_PROVIDER=extractive \
-  .venv/bin/uvicorn app.main:app --port 8000
+LLM_PROVIDER=extractive .venv/bin/uvicorn app.main:app --port 8000
 ```
 
 Open <http://localhost:8000>.
@@ -56,19 +54,23 @@ website, see **[INSTRUCTION.md](INSTRUCTION.md)**.
 Set `ADMIN_API_KEY` in `.env` before using the document endpoints — they fail closed with
 503 while it is still the placeholder, rather than leaving document management open.
 
-**With real models**, put an OpenAI key in `.env` and drop the overrides — `LLM_PROVIDER` and
-`EMBEDDING_PROVIDER` default to `openai`, and `RELEVANCE_FLOOR` to 0.35.
+Embeddings run on your machine by default, so indexing and search need no key at all. Only
+answer generation does: set `OPENAI_API_KEY` in `.env` and drop `LLM_PROVIDER=extractive`.
 
 ### The offline providers
 
-| Provider | What it is | Why it exists |
+| Setting | What it is | Trade-off |
 |---|---|---|
-| `EMBEDDING_PROVIDER=hashing` | Feature-hashed bag of words, L2-normalised | Runs with no key; retrieval tests exercise real similarity ordering rather than stubbed scores |
-| `LLM_PROVIDER=extractive` | Sentence selection from the retrieved context | Runs with no key; gives the eval a non-LLM baseline — "the model scores X" means little without "sentence selection alone scores Y" |
+| `EMBEDDING_PROVIDER=local` (default) | `BAAI/bge-small-en-v1.5` via ONNX, 384 dimensions | Free and offline, with real semantic matching. ~130 MB model, downloaded once |
+| `EMBEDDING_PROVIDER=openai` | `text-embedding-3-small`, 1536 dimensions | Needs API credit, and a migration back to 1536 plus a re-index |
+| `EMBEDDING_PROVIDER=hashing` | Feature-hashed bag of words | Tests only. Cannot match a paraphrase |
+| `LLM_PROVIDER=extractive` | Sentence selection from retrieved context | Runs with no key, and gives the eval a non-LLM baseline — "the model scores X" means little without "selection alone scores Y" |
 
-Both are materially worse than real models — the hashing embedder has no sense of paraphrase,
-and the extractive answerer cannot aggregate across sources. That gap is the measurement, so
-it isn't dressed up.
+`fastembed` is used rather than `sentence-transformers`, which pulls in PyTorch at roughly
+2 GB for inference this size does not need.
+
+The extractive answerer is genuinely weak: it cannot paraphrase, aggregate two sources, or
+refuse reliably. That gap is the measurement, so it is not dressed up.
 
 ---
 
@@ -140,56 +142,77 @@ is hand-typed and it cannot drift from the documents.
 
 ### Measured baseline
 
-`EMBEDDING_PROVIDER=hashing`, `LLM_PROVIDER=extractive`, floor 0.20, top_k 5, 75 chunks,
+`EMBEDDING_PROVIDER=local`, `LLM_PROVIDER=extractive`, floor 0.60, top_k 5, 75 chunks,
 72 golden cases:
 
 | Metric | Result |
 |---|---|
-| Page hit@5 | 70.5% (43/61) |
-| Document hit@5 | 72.1% (44/61) |
-| Over-refusal | 13.1% (8/61) |
-| Refusal accuracy, gate only | 27.3% (3/11) |
-| **Refusal accuracy, end to end** | **81.8% (9/11)** |
+| Page hit@5 | 88.5% (54/61) |
+| Document hit@5 | 95.1% (58/61) |
+| Top-1 document correct | 86.9% (53/61) |
+| Over-refusal | 3.3% (2/61) |
+| Refusal accuracy, gate only | 18.2% (2/11) |
+| Refusal accuracy, end to end | 54.5% (6/11) |
 | **Citations resolvable** | **72/72** |
-| Faithfulness (LLM-as-judge) | needs an API key — the offline provider cannot judge |
 | **Version leaks** | **0** |
-| Follow-ups, evaluated without rewriting | **0/5** |
+| Follow-ups answered correctly | 1/5 |
+| Faithfulness (LLM-as-judge) | needs API credit — neither offline provider can judge |
 
-Four of those are worth reading closely.
+### What the embedding model is worth
 
-**Refusal happens in two stages.** The gate stops 27.3% of unanswerable questions on its own;
-end to end the system refuses 81.8% of them, because the answerer refuses when the retrieved
-passages don't contain an answer. That gap is why the gate is tuned to favour recall rather
-than to do all the refusing itself.
+The same corpus, same golden set, same code — only the embedding provider changed:
+
+| | hashing (bag of words) | local (bge-small) |
+|---|---|---|
+| Page hit@5 | 70.5% | **88.5%** |
+| Top-1 document correct | 52.5% | **86.9%** |
+| Over-refusal | 13.1% | **3.3%** |
+| Version leaks | 0 | 0 |
+
+Top-1 accuracy went from a coin flip to 87%. That is the difference between matching words
+and matching meaning: "how much time off do staff get" scores 0.71 against "entitled to 15
+days of paid annual leave" under the local model, and near zero under the bag-of-words one,
+because the two phrases share no words.
+
+Four results are worth reading closely.
+
+**Refusal happens in two stages.** The gate stops 18.2% of unanswerable questions; end to end
+the system refuses 54.5%, because the answerer refuses when the passages do not contain an
+answer. The ceiling here is the *extractive* answerer, which is poor at refusing — a real
+model should lift it substantially without changing retrieval.
 
 **Citations resolvable is 72/72.** Every citation that reached output mapped to a chunk that
-was actually supplied — no invented reference survived, across the whole golden set.
+was actually supplied; no invented reference survived, across the whole golden set.
 
-**Version leaks are zero at every threshold**, so the active-version filter holds independently
+**Version leaks are zero at every threshold.** The active-version filter holds independently
 of tuning.
 
-**Follow-ups score 0/5 on their raw text.** That is the measurement that justifies the
-query-rewriting step, rather than an assertion that it was needed.
-
-These are offline-provider numbers, and a floor rather than a quality claim. The hashing
-embedder has no notion of paraphrase and the extractive answerer picks sentences by word
-overlap, so a real model should beat this substantially — re-running with a key is the first
-thing to do.
+**Follow-ups remain the weak spot** — 1 of 5. They are limited by the offline answerer and its
+crude query rewriting, not by embeddings, so this is the metric most likely to move when a
+real model is plugged in.
 
 ### Calibrating the floor
 
 `CLAUDE.md` §26 suggests `SIMILARITY_THRESHOLD=0.70`. The sweep shows what that does:
 
-| floor | page hit@5 | refusal accuracy (gate) | over-refusal |
+| floor | page hit@5 | refusal (gate) | over-refusal |
 |---|---|---|---|
-| 0.15 | 72.1% | 0.0% | 8.2% |
-| **0.20** | **70.5%** | **27.3%** | **13.1%** |
-| 0.25 | 57.4% | 81.8% | 26.2% |
-| 0.30 | 31.1% | 100% | 59.0% |
-| 0.35 | 14.8% | 100% | 77.0% |
-| **0.70** | **0.0%** | 100% | **100%** |
+| 0.50 | 88.5% | 0.0% | 0.0% |
+| **0.60** | **88.5%** | **18.2%** | **3.3%** |
+| 0.65 | 80.3% | 27.3% | 6.6% |
+| 0.68 | 80.3% | 63.6% | 9.8% |
+| 0.75 | 59.0% | 90.9% | 37.7% |
 
-At 0.70, Jarvis refuses every single question. Cosine scores aren't comparable across
+Scores are not comparable across models: the same 0.60 that is well-chosen for bge-small
+would refuse almost nothing under the bag-of-words provider, where relevant passages score
+around 0.3. That is why the floor is calibrated per provider rather than carried over.
+
+Over-refusal at the gate is the more expensive error, because it is unrecoverable — nothing
+retrieved means nothing to answer from. Letting a doubtful passage through is recoverable,
+since the answerer refuses too. That asymmetry is why 0.60 is chosen over 0.68 despite 0.68
+scoring better on gate-level refusal.
+
+Under the bag-of-words provider, the 0.70 threshold suggested in CLAUDE.md produced 0% page hits and 100% over-refusal — it refused every single question. Cosine scores aren't comparable across
 embedding models, so the floor has to be calibrated per provider against the golden set —
 measured, not guessed. Refusal accuracy is read alongside over-refusal, because refusing
 everything maximises it.
@@ -229,7 +252,7 @@ is that archiving must propagate, which `set_document_status` does in one transa
 ## Tests
 
 ```bash
-.venv/bin/python -m pytest        # 194 tests
+.venv/bin/python -m pytest        # 210 tests
 ```
 
 Unit tests make no network calls and use fakes for all three provider interfaces. Integration

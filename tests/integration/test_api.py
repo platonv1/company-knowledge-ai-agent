@@ -11,6 +11,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from app.api.deps import get_embedding_service, get_llm_service, get_rate_limiter
+from app.core.config import get_settings
 from app.core.rate_limit import TokenBucketLimiter
 from app.llm.base import ScriptedLLMService
 from app.main import create_app
@@ -18,6 +19,8 @@ from app.rag.embeddings import HashingEmbeddingService
 from scripts.generate_corpus import generate_corpus
 
 pytestmark = pytest.mark.integration
+
+DIMENSIONS = get_settings().embedding_dimensions
 
 ADMIN = {"X-Admin-Key": "test-admin-key"}
 
@@ -39,7 +42,7 @@ async def client(llm):
     app = create_app()
     app.dependency_overrides[get_llm_service] = lambda: llm
     app.dependency_overrides[get_embedding_service] = lambda: HashingEmbeddingService(
-        dimensions=1536
+        dimensions=DIMENSIONS
     )
     # One limiter per test, shared across that test's requests. Returning a new
     # limiter per call would mean the bucket never depletes and nothing is limited.
@@ -115,7 +118,7 @@ async def test_chat_is_rate_limited(llm):
     app = create_app()
     app.dependency_overrides[get_llm_service] = lambda: llm
     app.dependency_overrides[get_embedding_service] = lambda: HashingEmbeddingService(
-        dimensions=1536
+        dimensions=DIMENSIONS
     )
     limiter = TokenBucketLimiter(per_minute=2)
     app.dependency_overrides[get_rate_limiter] = lambda: limiter

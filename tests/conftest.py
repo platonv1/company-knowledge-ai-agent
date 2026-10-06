@@ -15,6 +15,9 @@ os.environ.setdefault(
 
 # Offline embeddings, so the whole suite runs with no API key.
 os.environ["EMBEDDING_PROVIDER"] = "hashing"
+# Must match the live schema: pgvector fixes the dimension per column, and
+# the migration set it to the local model's 384.
+os.environ["EMBEDDING_DIMENSIONS"] = "384"
 # The relevance floor is calibrated PER EMBEDDING MODEL against the golden set.
 # For the hashing provider the sweep gives 0.20 the best page hit (70.5%) at the
 # lowest over-refusal (13.1%); the answerer is the second refusal filter, so the

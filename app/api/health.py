@@ -6,10 +6,12 @@ reports whether a provider is *configured*, and real reachability is left to
 the first genuine request.
 """
 
+import re
 from typing import Any
 
 from fastapi import APIRouter, Response, status
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import AppSettings, DbSession
 from app.core.logging import get_logger
@@ -68,11 +70,25 @@ async def health(
         "model": settings.llm_model,
         "configured": settings.openai_api_key not in PLACEHOLDER_KEYS,
     }
+    # A configured dimension that disagrees with the column is the one failure
+    # mode that corrupts retrieval silently instead of raising, so both numbers
+    # are reported and compared.
+    database_dimensions = await _vector_column_dimensions(db)
     checks["embeddings"] = {
         "provider": settings.embedding_provider,
         "model": settings.embedding_model,
         "dimensions": settings.embedding_dimensions,
+        "database_dimensions": database_dimensions,
+        "dimensions_match": database_dimensions == settings.embedding_dimensions,
     }
+    if database_dimensions is not None and database_dimensions != settings.embedding_dimensions:
+        healthy = False
+        logger.error(
+            "Embedding dimension mismatch: configured %s, database column %s. "
+            "Run the migration and re-ingest, or retrieval will return nonsense.",
+            settings.embedding_dimensions,
+            database_dimensions,
+        )
 
     if not healthy:
         response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
@@ -83,3 +99,24 @@ async def health(
         "company": settings.company_name,
         "checks": checks,
     }
+
+
+async def _vector_column_dimensions(db: AsyncSession) -> int | None:
+    """Read the declared dimension of chunks.embedding, or None if unavailable."""
+    try:
+        declared = await db.scalar(
+            text(
+                "SELECT format_type(a.atttypid, a.atttypmod) FROM pg_attribute a "
+                "JOIN pg_class c ON c.oid = a.attrelid "
+                "WHERE c.relname = 'chunks' AND a.attname = 'embedding' "
+                "AND a.attnum > 0 AND NOT a.attisdropped"
+            )
+        )
+    except Exception as exc:  # noqa: BLE001 - health reports, never raises
+        logger.warning("Could not read the vector column type: %s", type(exc).__name__)
+        return None
+
+    if not declared:
+        return None
+    match = re.search(r"\((\d+)\)", declared)
+    return int(match.group(1)) if match else None

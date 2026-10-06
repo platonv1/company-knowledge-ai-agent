@@ -8,6 +8,7 @@ import uuid
 
 import pytest
 
+from app.core.config import get_settings
 from app.models.db import DocStatus, Organization
 from app.rag.chunking import TextChunk
 from app.rag.embeddings import HashingEmbeddingService
@@ -15,7 +16,9 @@ from app.repositories.vector_store import PgVectorStore, SearchFilters
 
 pytestmark = pytest.mark.integration
 
-DIMENSIONS = 1536
+# Read from configuration rather than hardcoded: the schema's vector
+# dimension is config-driven, and a literal here silently rots when it changes.
+DIMENSIONS = get_settings().embedding_dimensions
 
 
 @pytest.fixture

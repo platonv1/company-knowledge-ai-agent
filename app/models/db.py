@@ -31,9 +31,14 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
-# Changing this requires a new migration AND a full re-embed of the corpus,
-# because stored vectors are not comparable across embedding models.
-EMBEDDING_DIM = 1536
+from app.core.config import get_settings
+
+# The vector dimension is fixed per column in pgvector, so it comes from
+# configuration and the database must agree with it. Changing it requires a
+# migration AND a full re-embed: vectors from different models are not
+# comparable, so a mismatched index returns nonsense rather than failing.
+# app/api/health.py compares this against the live column and reports a mismatch.
+EMBEDDING_DIM = get_settings().embedding_dimensions
 
 
 def _pg_enum(python_enum: type[enum.Enum], name: str) -> Enum:

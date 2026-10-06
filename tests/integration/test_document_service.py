@@ -6,6 +6,7 @@ pipeline, status machine, and metadata handling are identical either way.
 
 import pytest
 
+from app.core.config import get_settings
 from app.models.db import DocStatus, IngestStatus
 from app.rag.embeddings import HashingEmbeddingService
 from app.repositories.vector_store import PgVectorStore, SearchFilters
@@ -17,6 +18,8 @@ from app.services.document_service import (
 from scripts.generate_corpus import generate_corpus
 
 pytestmark = pytest.mark.integration
+
+DIMENSIONS = get_settings().embedding_dimensions
 
 
 @pytest.fixture(scope="module")
@@ -31,7 +34,7 @@ async def service(db_session):
     return DocumentService(
         session=db_session,
         store=PgVectorStore(db_session),
-        embedder=HashingEmbeddingService(dimensions=1536),
+        embedder=HashingEmbeddingService(dimensions=DIMENSIONS),
     )
 
 
@@ -118,7 +121,7 @@ async def test_ingesting_the_whole_corpus_answers_the_version_question_correctly
     documents = await service.list_documents(org.id)
     assert len(documents) == len(corpus)
 
-    embedder = HashingEmbeddingService(dimensions=1536)
+    embedder = HashingEmbeddingService(dimensions=DIMENSIONS)
     query = await embedder.embed_query("how many days of paid annual leave do employees get")
     hits = await service.store.search(query, SearchFilters(org_id=org.id), limit=5)
 
@@ -142,7 +145,7 @@ async def test_the_archived_policy_outranks_the_active_one_on_raw_similarity(ser
     await service.ingest_file(corpus["Leave_Policy_v1.pdf"], org_id=org.id)
     await service.ingest_file(corpus["Leave_Policy_v2.pdf"], org_id=org.id)
 
-    embedder = HashingEmbeddingService(dimensions=1536)
+    embedder = HashingEmbeddingService(dimensions=DIMENSIONS)
     query = await embedder.embed_query("how many annual leave days do employees get")
 
     unfiltered = await service.store.search(

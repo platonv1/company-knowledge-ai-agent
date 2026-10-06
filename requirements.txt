@@ -16,6 +16,9 @@ pgvector==0.5.0
 # ---- RAG ----
 pdfplumber==0.11.10
 tiktoken==0.14.0
+# Local embeddings via ONNX. Chosen over sentence-transformers, which pulls in
+# PyTorch (~2GB) for inference this size does not need.
+fastembed==0.8.1
 openai==3.24.0
 
 # ---- Corpus generation + eval ----
